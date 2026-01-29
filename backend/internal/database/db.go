@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -14,7 +15,11 @@ var RDB *redis.Client
 
 func ConnectDB() {
 	var err error
-	dbUrl := "postgres://admin:password123@localhost:5432/sentinel_id"
+
+	dbUrl := os.Getenv("DATABASE_URL")
+	if dbUrl == "" {
+		log.Fatal("DATABASE_URL environment variable is not set")
+	}
 
 	DB, err = pgxpool.New(context.Background(), dbUrl)
 	if err != nil {
@@ -27,8 +32,13 @@ func ConnectDB() {
 	}
 	fmt.Println("PostgreSQL connected successfully")
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
 	RDB = redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: redisAddr,
 	})
 
 	_, err = RDB.Ping(context.Background()).Result()

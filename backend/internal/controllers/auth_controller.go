@@ -35,3 +35,22 @@ func (c *AuthController) Register(ctx *gin.Context) {
 		"user_id": user.ID,
 	})
 }
+
+func (c *AuthController) Login(ctx *gin.Context) {
+	var input models.UserLoginDTO
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	token, err := c.Service.Login(input)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"token": token,
+	})
+}

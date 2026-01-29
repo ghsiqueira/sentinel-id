@@ -57,3 +57,28 @@ func (s *UserService) Register(input models.UserRegisterDTO) (*models.User, erro
 
 	return newUser, nil
 }
+
+func (s *UserService) Login(input models.UserLoginDTO) (string, error) {
+	user, err := s.Repo.GetByEmail(input.Email)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", errors.New("invalid credentials")
+	}
+
+	match, err := utils.VerifyPassword(input.Password, user.PasswordHash)
+	if err != nil {
+		return "", err
+	}
+	if !match {
+		return "", errors.New("invalid credentials")
+	}
+
+	token, err := utils.GenerateToken(user.ID)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
