@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { UserPlus, Mail, Lock, User, FileText, ArrowRight, CheckCircle } from 'lucide-react';
+import { UserPlus, Mail, Lock, User, FileText, Check, X, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 
 export function Register() {
@@ -11,20 +11,52 @@ export function Register() {
     cpf: '',
     password: ''
   });
+  
+  const [passwordCriteria, setPasswordCriteria] = useState({
+    length: false,
+    upper: false,
+    lower: false,
+    number: false,
+    special: false
+  });
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const pwd = formData.password;
+    setPasswordCriteria({
+      length: pwd.length >= 8,
+      upper: /[A-Z]/.test(pwd),
+      lower: /[a-z]/.test(pwd),
+      number: /[0-9]/.test(pwd),
+      special: /[^A-Za-z0-9]/.test(pwd), 
+    });
+  }, [formData.password]);
+
+  const strengthScore = Object.values(passwordCriteria).filter(Boolean).length;
+  
+  const getStrengthColor = () => {
+    if (strengthScore <= 2) return 'bg-red-500';
+    if (strengthScore <= 4) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    if (strengthScore < 5) {
+      setError("Sua senha precisa atender a todos os requisitos abaixo.");
+      return;
+    }
+
     setLoading(true);
 
     try {
       await axios.post('http://localhost:8080/api/auth/register', formData);
-      
       alert("Conta criada com sucesso! Faça login.");
       navigate('/login');
-      
     } catch (err: any) {
       console.error(err);
       const msg = err.response?.data?.error || 'Erro ao criar conta. Verifique os dados.';
@@ -112,12 +144,27 @@ export function Register() {
                 required
               />
             </div>
+
+            <div className="mt-3 h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                    className={`h-full transition-all duration-500 ${getStrengthColor()}`} 
+                    style={{ width: `${(strengthScore / 5) * 100}%` }}
+                ></div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+                <Criterion label="Mínimo 8 caracteres" met={passwordCriteria.length} />
+                <Criterion label="Letra Maiúscula" met={passwordCriteria.upper} />
+                <Criterion label="Letra Minúscula" met={passwordCriteria.lower} />
+                <Criterion label="Número" met={passwordCriteria.number} />
+                <Criterion label="Símbolo (!@#)" met={passwordCriteria.special} />
+            </div>
           </div>
 
           <button 
             type="submit" 
-            disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2 mt-6 disabled:opacity-50"
+            disabled={loading || strengthScore < 5}
+            className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Cadastrando...' : (
               <>
@@ -136,4 +183,13 @@ export function Register() {
       </div>
     </div>
   );
+}
+
+function Criterion({ label, met }: { label: string, met: boolean }) {
+    return (
+        <div className={`flex items-center gap-2 text-xs transition-colors ${met ? 'text-green-400' : 'text-slate-500'}`}>
+            {met ? <Check size={12} /> : <X size={12} />}
+            <span>{label}</span>
+        </div>
+    )
 }

@@ -7,7 +7,7 @@ import (
 	"sentinel-id/internal/utils"
 	"time"
 
-	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserService struct {
@@ -16,50 +16,41 @@ type UserService struct {
 }
 
 func NewUserService(repo *repositories.UserRepository, sessionRepo *repositories.SessionRepository) *UserService {
-	return &UserService{
-		Repo:        repo,
-		SessionRepo: sessionRepo,
-	}
+	return &UserService{Repo: repo, SessionRepo: sessionRepo}
 }
 
 func (s *UserService) Register(input models.UserRegisterDTO) (*models.User, error) {
-	existingUser, err := s.Repo.GetByEmail(input.Email)
-	if err != nil {
-		return nil, err
+	if !utils.IsCPFValid(input.CPF) {
+		return nil, errors.New("o CPF informado é inválido")
 	}
+
+	if !utils.IsPasswordStrong(input.Password) {
+		return nil, errors.New("a senha é muito fraca. Requisitos: min 8 chars, maiúscula, minúscula, número e símbolo")
+	}
+
+	existingUser, _ := s.Repo.FindByEmail(input.Email)
 	if existingUser != nil {
-		return nil, errors.New("email already registered")
+		return nil, errors.New("email already in use")
 	}
 
-	existingUser, err = s.Repo.GetByCPF(input.CPF)
-	if err != nil {
-		return nil, err
-	}
-	if existingUser != nil {
-		return nil, errors.New("cpf already registered")
-	}
-
-	hashedPassword, err := utils.HashPassword(input.Password)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
-	newUser := &models.User{
-		ID:           uuid.New(),
+	user := &models.User{
 		FullName:     input.FullName,
 		Email:        input.Email,
 		CPF:          input.CPF,
-		PasswordHash: hashedPassword,
-		MfaEnabled:   false,
-		CreatedAt:    time.Now(),
+		PasswordHash: string(hashedPassword),
 	}
 
-	err = s.Repo.CreateUser(newUser)
+	err = s.Repo.CreateUser(user)
 	if err != nil {
 		return nil, err
 	}
 
-	return newUser, nil
+	return user, nil
 }
 
 func (s *UserService) Login(input models.UserLoginDTO, userAgent string, ip string) (string, string, error) {
