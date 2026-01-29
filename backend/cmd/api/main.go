@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	_ "sentinel-id/docs"
 	"sentinel-id/internal/controllers"
 	"sentinel-id/internal/database"
 	"sentinel-id/internal/middlewares"
@@ -12,8 +13,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// @title           Sentinel ID API
+// @version         1.0
+// @description     Sistema de Identidade Centralizado (SSO).
+// @host            localhost:8080
+// @BasePath        /api
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -25,12 +33,12 @@ func main() {
 
 	userRepo := repositories.NewUserRepository(database.DB)
 	sessionRepo := repositories.NewSessionRepository(database.DB)
-
 	userService := services.NewUserService(userRepo, sessionRepo)
-
 	authController := controllers.NewAuthController(userService)
 
 	r := gin.Default()
+
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	api := r.Group("/api")
 	{

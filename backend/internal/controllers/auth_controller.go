@@ -13,10 +13,24 @@ type AuthController struct {
 	Service *services.UserService
 }
 
+type RefreshInput struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 func NewAuthController(service *services.UserService) *AuthController {
 	return &AuthController{Service: service}
 }
 
+// @Summary      Registrar novo usuário
+// @Description  Cria uma nova conta de usuário com senha criptografada
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body models.UserRegisterDTO true "Dados de Cadastro"
+// @Success      201  {object} map[string]interface{}
+// @Failure      400  {object} map[string]string
+// @Failure      409  {object} map[string]string
+// @Router       /auth/register [post]
 func (c *AuthController) Register(ctx *gin.Context) {
 	var input models.UserRegisterDTO
 
@@ -37,6 +51,16 @@ func (c *AuthController) Register(ctx *gin.Context) {
 	})
 }
 
+// @Summary      Realizar Login
+// @Description  Autentica o usuário e retorna Access Token e Refresh Token
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body models.UserLoginDTO true "Credenciais"
+// @Success      200  {object} map[string]interface{}
+// @Failure      400  {object} map[string]string
+// @Failure      401  {object} map[string]string
+// @Router       /auth/login [post]
 func (c *AuthController) Login(ctx *gin.Context) {
 	var input models.UserLoginDTO
 
@@ -61,10 +85,16 @@ func (c *AuthController) Login(ctx *gin.Context) {
 	})
 }
 
-type RefreshInput struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
-}
-
+// @Summary      Renovar Token (Refresh)
+// @Description  Gera um novo Access Token usando um Refresh Token válido
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body RefreshInput true "Refresh Token"
+// @Success      200  {object} map[string]interface{}
+// @Failure      400  {object} map[string]string
+// @Failure      401  {object} map[string]string
+// @Router       /auth/refresh [post]
 func (c *AuthController) Refresh(ctx *gin.Context) {
 	var input RefreshInput
 
@@ -85,6 +115,16 @@ func (c *AuthController) Refresh(ctx *gin.Context) {
 	})
 }
 
+// @Summary      Logout
+// @Description  Revoga um Refresh Token específico
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body RefreshInput true "Token para revogar"
+// @Success      200  {object} map[string]string
+// @Failure      400  {object} map[string]string
+// @Failure      500  {object} map[string]string
+// @Router       /auth/logout [post]
 func (c *AuthController) Logout(ctx *gin.Context) {
 	var input RefreshInput
 
@@ -102,6 +142,14 @@ func (c *AuthController) Logout(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
 }
 
+// @Summary      Kill Switch (Revogar Tudo)
+// @Description  Desconecta o usuário de TODOS os dispositivos
+// @Tags         Users
+// @Security     Bearer
+// @Success      200  {object} map[string]string
+// @Failure      401  {object} map[string]string
+// @Failure      500  {object} map[string]string
+// @Router       /users/revoke-all [post]
 func (c *AuthController) LogoutAll(ctx *gin.Context) {
 	userID, exists := ctx.Get("userID")
 	if !exists {
