@@ -11,11 +11,15 @@ import (
 )
 
 type UserService struct {
-	Repo *repositories.UserRepository
+	Repo        *repositories.UserRepository
+	SessionRepo *repositories.SessionRepository
 }
 
-func NewUserService(repo *repositories.UserRepository) *UserService {
-	return &UserService{Repo: repo}
+func NewUserService(repo *repositories.UserRepository, sessionRepo *repositories.SessionRepository) *UserService {
+	return &UserService{
+		Repo:        repo,
+		SessionRepo: sessionRepo,
+	}
 }
 
 func (s *UserService) Register(input models.UserRegisterDTO) (*models.User, error) {
@@ -58,27 +62,84 @@ func (s *UserService) Register(input models.UserRegisterDTO) (*models.User, erro
 	return newUser, nil
 }
 
-func (s *UserService) Login(input models.UserLoginDTO) (string, error) {
+func (s *UserService) Login(input models.UserLoginDTO, userAgent string, ip string) (string, string, error) {
 	user, err := s.Repo.GetByEmail(input.Email)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if user == nil {
-		return "", errors.New("invalid credentials")
+		return "", "", errors.New("invalid credentials")
 	}
 
 	match, err := utils.VerifyPassword(input.Password, user.PasswordHash)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if !match {
-		return "", errors.New("invalid credentials")
+		return "", "", errors.New("invalid credentials")
 	}
 
-	token, err := utils.GenerateToken(user.ID)
+	accessToken, err := utils.GenerateAccessToken(user.ID)
+	if err != nil {
+		return "", "", err
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(user.ID)
+	if err != nil {
+		return "", "", err
+	}
+
+	session := &models.Session{
+		UserID:       user.ID,
+		RefreshToken: refreshToken,
+		DeviceName:   userAgent,
+		IPAddress:    ip,
+		ExpiresAt:    time.Now().Add(time.Hour * 24 * 7),
+	}
+
+	err = s.SessionRepo.CreateSession(session)
+	if err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (s *UserService) RefreshToken(refreshTokenString string) (string, error) {
+	claims, err := utils.ValidateToken(refreshTokenString)
 	if err != nil {
 		return "", err
 	}
 
-	return token, nil
+	if claims["type"] != "refresh" {
+		return "", errors.New("invalid token type")
+	}
+
+	session, err := s.SessionRepo.GetSessionByToken(refreshTokenString)
+	if err != nil {
+		return "", errors.New("session not found")
+	}
+
+	if session.IsRevoked {
+		return "", errors.New("session revoked")
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		return "", errors.New("session expired")
+	}
+
+	newAccessToken, err := utils.GenerateAccessToken(session.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	return newAccessToken, nil
+}
+
+func (s *UserService) Logout(refreshTokenString string) error {
+	return s.SessionRepo.RevokeSession(refreshTokenString)
+}
+
+func (s *UserService) LogoutAll(userID string) error {
+	return s.SessionRepo.RevokeAllUserSessions(userID)
 }

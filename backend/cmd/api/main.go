@@ -24,7 +24,10 @@ func main() {
 	defer database.CloseDB()
 
 	userRepo := repositories.NewUserRepository(database.DB)
-	userService := services.NewUserService(userRepo)
+	sessionRepo := repositories.NewSessionRepository(database.DB)
+
+	userService := services.NewUserService(userRepo, sessionRepo)
+
 	authController := controllers.NewAuthController(userService)
 
 	r := gin.Default()
@@ -35,6 +38,8 @@ func main() {
 		{
 			auth.POST("/register", authController.Register)
 			auth.POST("/login", authController.Login)
+			auth.POST("/refresh", authController.Refresh)
+			auth.POST("/logout", authController.Logout)
 		}
 
 		protected := api.Group("/users")
@@ -47,6 +52,8 @@ func main() {
 					"your_id": userID,
 				})
 			})
+
+			protected.POST("/revoke-all", authController.LogoutAll)
 		}
 	}
 

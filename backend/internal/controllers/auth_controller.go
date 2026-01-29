@@ -6,6 +6,7 @@ import (
 	"sentinel-id/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AuthController struct {
@@ -44,13 +45,75 @@ func (c *AuthController) Login(ctx *gin.Context) {
 		return
 	}
 
-	token, err := c.Service.Login(input)
+	userAgent := ctx.GetHeader("User-Agent")
+	clientIP := ctx.ClientIP()
+
+	accessToken, refreshToken, err := c.Service.Login(input, userAgent, clientIP)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    900,
 	})
+}
+
+type RefreshInput struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+func (c *AuthController) Refresh(ctx *gin.Context) {
+	var input RefreshInput
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	newAccessToken, err := c.Service.RefreshToken(input.RefreshToken)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired refresh token"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"access_token": newAccessToken,
+		"expires_in":   900,
+	})
+}
+
+func (c *AuthController) Logout(ctx *gin.Context) {
+	var input RefreshInput
+
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := c.Service.Logout(input.RefreshToken)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to logout"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
+}
+
+func (c *AuthController) LogoutAll(ctx *gin.Context) {
+	userID, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
+		return
+	}
+
+	err := c.Service.LogoutAll(userID.(uuid.UUID).String())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke sessions"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "All sessions revoked (Kill Switch activated)"})
 }

@@ -17,11 +17,35 @@ func getSecret() []byte {
 	return []byte(secret)
 }
 
+func GenerateAccessToken(userID uuid.UUID) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":  userID.String(),
+		"exp":  time.Now().Add(time.Minute * 15).Unix(),
+		"iat":  time.Now().Unix(),
+		"type": "access",
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(getSecret())
+}
+
 func GenerateToken(userID uuid.UUID) (string, error) {
 	claims := jwt.MapClaims{
 		"sub": userID.String(),
 		"exp": time.Now().Add(time.Hour * 24).Unix(),
 		"iat": time.Now().Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(getSecret())
+}
+
+func GenerateRefreshToken(userID uuid.UUID) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":  userID.String(),
+		"exp":  time.Now().Add(time.Hour * 24 * 7).Unix(),
+		"iat":  time.Now().Unix(),
+		"type": "refresh",
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
