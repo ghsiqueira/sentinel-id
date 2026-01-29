@@ -143,3 +143,7 @@ func (s *UserService) Logout(refreshTokenString string) error {
 func (s *UserService) LogoutAll(userID string) error {
 	return s.SessionRepo.RevokeAllUserSessions(userID)
 }
+
+func (s *UserService) ListSessions(userID string) ([]models.Session, error) {
+	return s.SessionRepo.GetSessionsByUserID(userID)
+}

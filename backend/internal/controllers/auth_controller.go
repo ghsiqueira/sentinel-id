@@ -165,3 +165,26 @@ func (c *AuthController) LogoutAll(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "All sessions revoked (Kill Switch activated)"})
 }
+
+// @Summary      Listar Sessões
+// @Description  Retorna todas as sessões ativas e revogadas do usuário
+// @Tags         Users
+// @Security     Bearer
+// @Success      200  {array} models.Session
+// @Failure      401  {object} map[string]string
+// @Router       /users/sessions [get]
+func (c *AuthController) ListSessions(ctx *gin.Context) {
+	userID, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
+		return
+	}
+
+	sessions, err := c.Service.ListSessions(userID.(uuid.UUID).String())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sessions"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, sessions)
+}

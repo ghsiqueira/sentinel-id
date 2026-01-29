@@ -72,6 +72,7 @@ func main() {
 			})
 
 			protected.POST("/revoke-all", authController.LogoutAll)
+			protected.GET("/sessions", authController.ListSessions)
 		}
 	}
 

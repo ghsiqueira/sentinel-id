@@ -67,3 +67,27 @@ func (r *SessionRepository) RevokeAllUserSessions(userID string) error {
 	_, err := r.DB.Exec(context.Background(), query, userID)
 	return err
 }
+
+func (r *SessionRepository) GetSessionsByUserID(userID string) ([]models.Session, error) {
+	query := `
+		SELECT id, user_id, refresh_token, device_name, ip_address, is_revoked, expires_at
+		FROM sessions 
+		WHERE user_id = $1 
+	`
+
+	rows, err := r.DB.Query(context.Background(), query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []models.Session
+	for rows.Next() {
+		var s models.Session
+		if err := rows.Scan(&s.ID, &s.UserID, &s.RefreshToken, &s.DeviceName, &s.IPAddress, &s.IsRevoked, &s.ExpiresAt); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, nil
+}

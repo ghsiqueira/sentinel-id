@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 
@@ -96,6 +96,17 @@ export function Login() {
             )}
           </button>
         </form>
+
+        <div className="mt-6 text-center border-t border-slate-800 pt-6">
+          <p className="text-slate-400 text-sm mb-3">Ainda não tem acesso?</p>
+          <Link 
+            to="/register" 
+            className="w-full inline-flex items-center justify-center py-2.5 border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg transition-all text-sm font-medium"
+          >
+            Criar conta de Administrador
+          </Link>
+        </div>
+
       </div>
     </div>
   );

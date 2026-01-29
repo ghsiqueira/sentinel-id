@@ -14,5 +14,4 @@ type Session struct {
 	IPAddress    string    `json:"ip_address"`
 	IsRevoked    bool      `json:"is_revoked"`
 	ExpiresAt    time.Time `json:"expires_at"`
-	CreatedAt    time.Time `json:"created_at"`
 }
