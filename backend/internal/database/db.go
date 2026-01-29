@@ -16,9 +16,23 @@ var RDB *redis.Client
 func ConnectDB() {
 	var err error
 
-	dbUrl := os.Getenv("DATABASE_URL")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+
+	var dbUrl string
+
+	if dbHost != "" && dbUser != "" {
+		dbUrl = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+	} else {
+		dbUrl = os.Getenv("DATABASE_URL")
+	}
+
 	if dbUrl == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+		log.Fatal("Erro: Não foi possível determinar a conexão com o banco (nem variáveis separadas, nem DATABASE_URL)")
 	}
 
 	DB, err = pgxpool.New(context.Background(), dbUrl)
@@ -32,9 +46,18 @@ func ConnectDB() {
 	}
 	fmt.Println("PostgreSQL connected successfully")
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	redisHost := os.Getenv("REDIS_HOST")
+	redisPort := os.Getenv("REDIS_PORT")
+
+	var redisAddr string
+
+	if redisHost != "" {
+		redisAddr = fmt.Sprintf("%s:%s", redisHost, redisPort)
+	} else {
+		redisAddr = os.Getenv("REDIS_ADDR")
+		if redisAddr == "" {
+			redisAddr = "localhost:6379"
+		}
 	}
 
 	RDB = redis.NewClient(&redis.Options{

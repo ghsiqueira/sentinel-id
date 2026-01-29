@@ -6,14 +6,16 @@ services:
     container_name: sentinel_db
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: sentinel_id
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/database:/docker-entrypoint-initdb.d
+    networks:
+      - sentinel-network
 
   redis:
     image: redis:7-alpine
@@ -21,6 +23,44 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    networks:
+      - sentinel-network
+
+  api:
+    build: ./backend
+    container_name: sentinel_api
+    restart: always
+    ports:
+      - "${PORT}:8080"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=5432
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_HOST=redis 
+      - REDIS_PORT=6379
+    networks:
+      - sentinel-network
+
+  web:
+    build: ./frontend
+    container_name: sentinel_web
+    restart: always
+    ports:
+      - "3000:80" 
+    depends_on:
+      - api
+    networks:
+      - sentinel-network
 
 volumes:
   postgres_data:
+
+networks:
+  sentinel-network:
+    driver: bridge
