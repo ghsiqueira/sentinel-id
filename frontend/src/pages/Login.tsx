@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
-import axios from 'axios';
+import api from '../services/api'; 
 
-export function Login() {
+export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,12 +16,12 @@ export function Login() {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/login', {
+      const response = await api.post('/auth/login', {
         email,
         password
       });
 
-      localStorage.setItem('access_token', response.data.access_token);
+      localStorage.setItem('token', response.data.access_token);
       localStorage.setItem('refresh_token', response.data.refresh_token);
 
       navigate('/dashboard');

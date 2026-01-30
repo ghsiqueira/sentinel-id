@@ -1,0 +1,273 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'login_screen.dart';
+import 'sessions_screen.dart';
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final _storage = const FlutterSecureStorage();
+  final _dio = Dio();
+  bool _isLoading = false;
+  Timer? _statusTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException e, handler) async {
+          if (e.response?.statusCode == 401) {
+            _logout();
+          }
+          return handler.next(e);
+        },
+      ),
+    );
+
+    _startStatusCheck();
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startStatusCheck() {
+    _statusTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      try {
+        final token = await _storage.read(key: 'access_token');
+        if (token == null) return;
+
+        String baseUrl;
+        if (Platform.isAndroid) {
+          baseUrl = 'http://10.0.2.2:8080';
+        } else {
+          baseUrl = 'http://localhost:8080';
+        }
+
+        await _dio.get(
+          '$baseUrl/api/users/me',
+          options: Options(headers: {'Authorization': 'Bearer $token'}),
+        );
+      } catch (e) {}
+    });
+  }
+
+  Future<void> _logout() async {
+    _statusTimer?.cancel();
+    await _storage.delete(key: 'access_token');
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    }
+  }
+
+  Future<void> _revokeAllSessions() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        title: const Text(
+          'Zona de Perigo',
+          style: TextStyle(color: Colors.red),
+        ),
+        content: const Text(
+          'Isso vai desconectar você e TODOS os outros dispositivos imediatamente. Tem certeza?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'SIM, DERRUBAR TUDO',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final token = await _storage.read(key: 'access_token');
+
+      String baseUrl;
+      if (Platform.isAndroid) {
+        baseUrl = 'http://10.0.2.2:8080';
+      } else {
+        baseUrl = 'http://localhost:8080';
+      }
+
+      final apiUrl = '$baseUrl/api/users/revoke-all';
+
+      await _dio.post(
+        apiUrl,
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('☢️ SUCESSO: Todas as sessões foram destruídas!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        _logout();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao executar comando.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          'COMANDO CENTRAL',
+          style: GoogleFonts.jetBrainsMono(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.grey),
+            onPressed: _logout,
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi, color: Colors.green),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'STATUS DA REDE',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                      Text(
+                        'Conexão Segura',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _isLoading ? null : _revokeAllSessions,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Colors.red.shade900, Colors.red.shade600],
+                    begin: Alignment.bottomLeft,
+                    end: Alignment.topRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.withValues(alpha: 0.5),
+                      blurRadius: 30,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Icon(
+                          Icons.power_settings_new,
+                          size: 80,
+                          color: Colors.white,
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              "KILL SWITCH",
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            const Text(
+              "Pressione para revogar acesso global",
+              style: TextStyle(color: Colors.grey),
+            ),
+            const Spacer(),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SessionsScreen()),
+                );
+              },
+              icon: const Icon(Icons.devices, color: Colors.blue),
+              label: const Text('Ver Dispositivos Conectados'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.blue,
+                side: const BorderSide(color: Colors.blue),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -64,8 +65,9 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 
 	hashToCompare := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(decodedHash)))
 
-	if string(hashToCompare) == string(decodedHash) {
+	if bytes.Equal(hashToCompare, decodedHash) {
 		return true, nil
 	}
+
 	return false, nil
 }

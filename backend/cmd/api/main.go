@@ -27,7 +27,7 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Aviso: Arquivo .env não encontrado, usando variáveis de ambiente do sistema.")
 	}
 
 	database.ConnectDB()
@@ -41,7 +41,7 @@ func main() {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -61,7 +61,7 @@ func main() {
 		}
 
 		protected := api.Group("/users")
-		protected.Use(middlewares.AuthMiddleware())
+		protected.Use(middlewares.AuthMiddleware(database.DB))
 		{
 			protected.GET("/me", func(c *gin.Context) {
 				userID, _ := c.Get("userID")

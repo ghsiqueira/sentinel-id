@@ -151,13 +151,9 @@ func (c *AuthController) Logout(ctx *gin.Context) {
 // @Failure      500  {object} map[string]string
 // @Router       /users/revoke-all [post]
 func (c *AuthController) LogoutAll(ctx *gin.Context) {
-	userID, exists := ctx.Get("userID")
-	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
-		return
-	}
+	userID := ctx.MustGet("userID").(uuid.UUID)
 
-	err := c.Service.LogoutAll(userID.(uuid.UUID).String())
+	err := c.Service.RevokeAllSessions(userID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke sessions"})
 		return
@@ -174,13 +170,9 @@ func (c *AuthController) LogoutAll(ctx *gin.Context) {
 // @Failure      401  {object} map[string]string
 // @Router       /users/sessions [get]
 func (c *AuthController) ListSessions(ctx *gin.Context) {
-	userID, exists := ctx.Get("userID")
-	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found in context"})
-		return
-	}
+	userID := ctx.MustGet("userID").(uuid.UUID)
 
-	sessions, err := c.Service.ListSessions(userID.(uuid.UUID).String())
+	sessions, err := c.Service.ListUserSessions(userID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sessions"})
 		return

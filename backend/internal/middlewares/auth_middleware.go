@@ -1,15 +1,18 @@
 package middlewares
 
 import (
+	"context"
 	"net/http"
-	"sentinel-id/internal/utils"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -25,25 +28,44 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		tokenString := parts[1]
 
-		claims, err := utils.ValidateToken(tokenString)
-		if err != nil {
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			return []byte(os.Getenv("JWT_SECRET")), nil
+		})
+
+		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			return
 		}
 
-		sub, ok := claims["sub"].(string)
+		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
 			return
 		}
 
-		userID, err := uuid.Parse(sub)
+		sub, ok := claims["sub"].(string)
+		if !ok {
+			sub, ok = claims["user_id"].(string)
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token does not contain user ID"})
+				return
+			}
+		}
+
+		userUUID, err := uuid.Parse(sub)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID in token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid UUID in token"})
 			return
 		}
 
-		c.Set("userID", userID)
+		var activeSessions int
+		err = db.QueryRow(context.Background(), "SELECT COUNT(*) FROM sessions WHERE user_id = $1", userUUID).Scan(&activeSessions)
+
+		if err != nil || activeSessions == 0 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session revoked or expired"})
+			return
+		}
+		c.Set("userID", userUUID)
 		c.Next()
 	}
 }

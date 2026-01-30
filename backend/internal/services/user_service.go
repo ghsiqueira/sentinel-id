@@ -7,70 +7,62 @@ import (
 	"sentinel-id/internal/utils"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
+	"github.com/google/uuid"
 )
 
 type UserService struct {
-	Repo        *repositories.UserRepository
+	UserRepo    *repositories.UserRepository
 	SessionRepo *repositories.SessionRepository
 }
 
-func NewUserService(repo *repositories.UserRepository, sessionRepo *repositories.SessionRepository) *UserService {
-	return &UserService{Repo: repo, SessionRepo: sessionRepo}
+func NewUserService(userRepo *repositories.UserRepository, sessionRepo *repositories.SessionRepository) *UserService {
+	return &UserService{
+		UserRepo:    userRepo,
+		SessionRepo: sessionRepo,
+	}
 }
 
 func (s *UserService) Register(input models.UserRegisterDTO) (*models.User, error) {
-	if !utils.IsCPFValid(input.CPF) {
-		return nil, errors.New("o CPF informado é inválido")
-	}
-
-	if !utils.IsPasswordStrong(input.Password) {
-		return nil, errors.New("a senha é muito fraca. Requisitos: min 8 chars, maiúscula, minúscula, número e símbolo")
-	}
-
-	existingUser, _ := s.Repo.FindByEmail(input.Email)
+	existingUser, _ := s.UserRepo.FindByEmail(input.Email)
 	if existingUser != nil {
 		return nil, errors.New("email already in use")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	hashedPassword, err := utils.HashPassword(input.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	user := &models.User{
+	user := models.User{
+		ID:           uuid.New(),
 		FullName:     input.FullName,
 		Email:        input.Email,
 		CPF:          input.CPF,
-		PasswordHash: string(hashedPassword),
+		PasswordHash: hashedPassword,
+		CreatedAt:    time.Now(),
+		MfaEnabled:   false,
 	}
 
-	err = s.Repo.CreateUser(user)
+	err = s.UserRepo.CreateUser(&user)
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return &user, nil
 }
 
-func (s *UserService) Login(input models.UserLoginDTO, userAgent string, ip string) (string, string, error) {
-	user, err := s.Repo.GetByEmail(input.Email)
+func (s *UserService) Login(input models.UserLoginDTO, userAgent string, clientIP string) (string, string, error) {
+	user, err := s.UserRepo.FindByEmail(input.Email)
 	if err != nil {
-		return "", "", err
-	}
-	if user == nil {
 		return "", "", errors.New("invalid credentials")
 	}
 
 	match, err := utils.VerifyPassword(input.Password, user.PasswordHash)
-	if err != nil {
-		return "", "", err
-	}
-	if !match {
+	if err != nil || !match {
 		return "", "", errors.New("invalid credentials")
 	}
 
-	accessToken, err := utils.GenerateAccessToken(user.ID)
+	accessToken, err := utils.GenerateToken(user.ID)
 	if err != nil {
 		return "", "", err
 	}
@@ -80,15 +72,18 @@ func (s *UserService) Login(input models.UserLoginDTO, userAgent string, ip stri
 		return "", "", err
 	}
 
-	session := &models.Session{
+	session := models.Session{
+		ID:           uuid.New(),
 		UserID:       user.ID,
+		Token:        accessToken,
 		RefreshToken: refreshToken,
-		DeviceName:   userAgent,
-		IPAddress:    ip,
-		ExpiresAt:    time.Now().Add(time.Hour * 24 * 7),
+		DeviceInfo:   userAgent,
+		IPAddress:    clientIP,
+		ExpiresAt:    time.Now().Add(24 * time.Hour * 7),
+		CreatedAt:    time.Now(),
 	}
 
-	err = s.SessionRepo.CreateSession(session)
+	err = s.SessionRepo.Create(session)
 	if err != nil {
 		return "", "", err
 	}
@@ -96,45 +91,34 @@ func (s *UserService) Login(input models.UserLoginDTO, userAgent string, ip stri
 	return accessToken, refreshToken, nil
 }
 
-func (s *UserService) RefreshToken(refreshTokenString string) (string, error) {
-	claims, err := utils.ValidateToken(refreshTokenString)
-	if err != nil {
-		return "", err
-	}
-
-	if claims["type"] != "refresh" {
-		return "", errors.New("invalid token type")
-	}
-
-	session, err := s.SessionRepo.GetSessionByToken(refreshTokenString)
-	if err != nil {
-		return "", errors.New("session not found")
-	}
-
-	if session.IsRevoked {
-		return "", errors.New("session revoked")
-	}
-
-	if time.Now().After(session.ExpiresAt) {
-		return "", errors.New("session expired")
-	}
-
-	newAccessToken, err := utils.GenerateAccessToken(session.UserID)
-	if err != nil {
-		return "", err
-	}
-
-	return newAccessToken, nil
+func (s *UserService) RefreshToken(refreshToken string) (string, error) {
+	return "", errors.New("refresh flow needs session lookup implementation")
 }
 
-func (s *UserService) Logout(refreshTokenString string) error {
-	return s.SessionRepo.RevokeSession(refreshTokenString)
+func (s *UserService) Logout(refreshToken string) error {
+	return s.SessionRepo.Revoke(refreshToken)
+}
+
+func (s *UserService) RevokeAllSessions(userID uuid.UUID) error {
+	return s.SessionRepo.RevokeAll(userID)
+}
+
+func (s *UserService) ListUserSessions(userID uuid.UUID) ([]models.Session, error) {
+	return s.SessionRepo.ListByUser(userID)
 }
 
 func (s *UserService) LogoutAll(userID string) error {
-	return s.SessionRepo.RevokeAllUserSessions(userID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+	return s.SessionRepo.RevokeAll(uid)
 }
 
 func (s *UserService) ListSessions(userID string) ([]models.Session, error) {
-	return s.SessionRepo.GetSessionsByUserID(userID)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.SessionRepo.ListByUser(uid)
 }
