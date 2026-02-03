@@ -92,7 +92,28 @@ func (s *UserService) Login(input models.UserLoginDTO, userAgent string, clientI
 }
 
 func (s *UserService) RefreshToken(refreshToken string) (string, error) {
-	return "", errors.New("refresh flow needs session lookup implementation")
+	session, err := s.SessionRepo.FindByRefreshToken(refreshToken)
+	if err != nil {
+		return "", errors.New("database error")
+	}
+	if session == nil {
+		return "", errors.New("invalid refresh token")
+	}
+
+	if session.IsRevoked {
+		return "", errors.New("session is revoked")
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		return "", errors.New("session expired")
+	}
+
+	newAccessToken, err := utils.GenerateToken(session.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	return newAccessToken, nil
 }
 
 func (s *UserService) Logout(refreshToken string) error {

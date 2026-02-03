@@ -5,6 +5,7 @@ import (
 	"sentinel-id/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -51,4 +52,21 @@ func (r *SessionRepository) ListByUser(userID uuid.UUID) ([]models.Session, erro
 		sessions = append(sessions, s)
 	}
 	return sessions, nil
+}
+
+func (r *SessionRepository) FindByRefreshToken(refreshToken string) (*models.Session, error) {
+	query := `SELECT id, user_id, token, refresh_token, device_info, ip_address, is_revoked, created_at, expires_at FROM sessions WHERE refresh_token = $1`
+
+	var s models.Session
+	err := r.DB.QueryRow(context.Background(), query, refreshToken).Scan(
+		&s.ID, &s.UserID, &s.Token, &s.RefreshToken, &s.DeviceInfo, &s.IPAddress, &s.IsRevoked, &s.CreatedAt, &s.ExpiresAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
 }

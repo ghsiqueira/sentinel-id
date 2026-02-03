@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'login_screen.dart';
+import '../services/api_service.dart';
 import 'sessions_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -15,25 +13,16 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  final _api = ApiService().dio;
+
   final _storage = const FlutterSecureStorage();
-  final _dio = Dio();
+
   bool _isLoading = false;
   Timer? _statusTimer;
 
   @override
   void initState() {
     super.initState();
-    _dio.interceptors.add(
-      InterceptorsWrapper(
-        onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401) {
-            _logout();
-          }
-          return handler.next(e);
-        },
-      ),
-    );
-
     _startStatusCheck();
   }
 
@@ -46,32 +35,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _startStatusCheck() {
     _statusTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       try {
-        final token = await _storage.read(key: 'access_token');
-        if (token == null) return;
-
-        String baseUrl;
-        if (Platform.isAndroid) {
-          baseUrl = 'http://10.0.2.2:8080';
-        } else {
-          baseUrl = 'http://localhost:8080';
-        }
-
-        await _dio.get(
-          '$baseUrl/api/users/me',
-          options: Options(headers: {'Authorization': 'Bearer $token'}),
-        );
+        await _api.get('/users/me');
       } catch (e) {}
     });
   }
 
   Future<void> _logout() async {
     _statusTimer?.cancel();
-    await _storage.delete(key: 'access_token');
+    await _storage.deleteAll();
     if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     }
   }
 
@@ -109,21 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final token = await _storage.read(key: 'access_token');
-
-      String baseUrl;
-      if (Platform.isAndroid) {
-        baseUrl = 'http://10.0.2.2:8080';
-      } else {
-        baseUrl = 'http://localhost:8080';
-      }
-
-      final apiUrl = '$baseUrl/api/users/revoke-all';
-
-      await _dio.post(
-        apiUrl,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
+      await _api.post('/users/revoke-all');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -250,7 +209,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => SessionsScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const SessionsScreen(),
+                  ),
                 );
               },
               icon: const Icon(Icons.devices, color: Colors.blue),

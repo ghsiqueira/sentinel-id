@@ -1,34 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'screens/login_screen.dart';
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+import 'screens/dashboard_screen.dart';
+import 'services/api_service.dart';
 
 void main() {
-  setupInterceptors();
   runApp(const SentinelApp());
-}
-
-void setupInterceptors() {
-  final dio = Dio();
-  const storage = FlutterSecureStorage();
-
-  dio.interceptors.add(
-    InterceptorsWrapper(
-      onError: (DioException e, handler) async {
-        if (e.response?.statusCode == 401) {
-          await storage.delete(key: 'access_token');
-          navigatorKey.currentState?.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-            (route) => false,
-          );
-        }
-        return handler.next(e);
-      },
-    ),
-  );
 }
 
 class SentinelApp extends StatelessWidget {
@@ -52,7 +29,11 @@ class SentinelApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const LoginScreen(),
+      initialRoute: '/login',
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/dashboard': (context) => const DashboardScreen(),
+      },
     );
   }
 }
