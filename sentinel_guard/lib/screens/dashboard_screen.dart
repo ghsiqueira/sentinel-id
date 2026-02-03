@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
-import 'sessions_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -14,7 +13,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _api = ApiService().dio;
-
   final _storage = const FlutterSecureStorage();
 
   bool _isLoading = false;
@@ -36,7 +34,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _statusTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       try {
         await _api.get('/users/me');
-      } catch (e) {}
+      } catch (e) {
+        // Ignora erros de conexão no background check
+      }
     });
   }
 
@@ -87,7 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('☢️ SUCESSO: Todas as sessões foram destruídas!'),
+            content: Text('SUCESSO: Todas as sessões foram destruídas!'),
             backgroundColor: Colors.red,
           ),
         );
@@ -205,14 +205,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: TextStyle(color: Colors.grey),
             ),
             const Spacer(),
+
             OutlinedButton.icon(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SessionsScreen(),
-                  ),
-                );
+                Navigator.pushNamed(context, '/audit-logs');
+              },
+              icon: const Icon(Icons.history, color: Colors.purpleAccent),
+              label: const Text('Ver Histórico de Ações'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.purpleAccent,
+                side: const BorderSide(color: Colors.purpleAccent),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(context, '/sessions');
               },
               icon: const Icon(Icons.devices, color: Colors.blue),
               label: const Text('Ver Dispositivos Conectados'),

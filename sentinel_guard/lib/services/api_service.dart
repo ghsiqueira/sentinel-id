@@ -50,7 +50,6 @@ class ApiService {
               if (newAccessToken != null) {
                 e.requestOptions.headers['Authorization'] =
                     'Bearer $newAccessToken';
-
                 final cloneReq = await dio.fetch(e.requestOptions);
                 return handler.resolve(cloneReq);
               }
@@ -79,10 +78,8 @@ class ApiService {
       final newAccessToken = response.data['access_token'];
       await _storage.write(key: 'access_token', value: newAccessToken);
 
-      print("🔄 Token renovado com sucesso (Silent Refresh)!");
       return newAccessToken;
     } catch (e) {
-      print("❌ Falha ao renovar token: $e");
       return null;
     }
   }
@@ -93,5 +90,14 @@ class ApiService {
       '/login',
       (route) => false,
     );
+  }
+
+  Future<List<dynamic>> getAuditLogs() async {
+    try {
+      final response = await dio.get('/users/audit-logs');
+      return response.data;
+    } catch (e) {
+      rethrow;
+    }
   }
 }

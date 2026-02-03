@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sentinel-id/internal/models"
 	"sentinel-id/internal/services"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,6 +17,14 @@ type AuthController struct {
 
 type RefreshInput struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+type SessionResponse struct {
+	ID         uuid.UUID `json:"id"`
+	DeviceInfo string    `json:"device_info"`
+	IPAddress  string    `json:"ip_address"`
+	CreatedAt  time.Time `json:"created_at"`
+	IsCurrent  bool      `json:"is_current"`
 }
 
 func NewAuthController(service *services.UserService) *AuthController {
@@ -166,14 +176,16 @@ func (c *AuthController) LogoutAll(ctx *gin.Context) {
 }
 
 // @Summary      Listar Sessões
-// @Description  Retorna todas as sessões ativas e revogadas do usuário
+// @Description  Retorna todas as sessões ativas e identifica a atual
 // @Tags         Users
 // @Security     Bearer
-// @Success      200  {array} models.Session
+// @Success      200  {array} SessionResponse
 // @Failure      401  {object} map[string]string
 // @Router       /users/sessions [get]
 func (c *AuthController) ListSessions(ctx *gin.Context) {
 	userID := ctx.MustGet("userID").(uuid.UUID)
+	authHeader := ctx.GetHeader("Authorization")
+	currentToken := strings.TrimPrefix(authHeader, "Bearer ")
 
 	sessions, err := c.Service.ListUserSessions(userID)
 	if err != nil {
@@ -181,5 +193,47 @@ func (c *AuthController) ListSessions(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, sessions)
+	var response []SessionResponse
+	for _, s := range sessions {
+		response = append(response, SessionResponse{
+			ID:         s.ID,
+			DeviceInfo: s.DeviceInfo,
+			IPAddress:  s.IPAddress,
+			CreatedAt:  s.CreatedAt,
+			IsCurrent:  s.Token == currentToken,
+		})
+	}
+
+	ctx.JSON(http.StatusOK, response)
+}
+
+// @Summary      Get Audit Logs
+// @Router       /users/audit-logs [get]
+func (c *AuthController) GetAuditLogs(ctx *gin.Context) {
+	userID := ctx.MustGet("userID").(uuid.UUID)
+
+	logs, err := c.Service.ListAuditLogs(userID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch audit logs"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, logs)
+}
+
+// @Summary      Revoke specific session
+// @Router       /users/sessions/:id [delete]
+func (c *AuthController) RevokeSession(ctx *gin.Context) {
+	sessionID := ctx.Param("id")
+	userID := ctx.MustGet("userID").(uuid.UUID)
+	clientIP := ctx.ClientIP()
+	userAgent := ctx.GetHeader("User-Agent")
+
+	err := c.Service.RevokeSession(sessionID, userID, clientIP, userAgent)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke session"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "Session revoked"})
 }

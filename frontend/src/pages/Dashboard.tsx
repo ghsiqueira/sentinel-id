@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Smartphone, Monitor, LogOut, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
+import { Shield, Smartphone, Monitor, LogOut, AlertTriangle, RefreshCw, XCircle, Activity } from 'lucide-react';
 
 interface Session {
   id: string;
@@ -9,7 +9,7 @@ interface Session {
   ip_address: string;
   created_at: string;
   expires_at: string;
-  is_revoked: boolean;
+  is_current: boolean;
 }
 
 export default function Dashboard() {
@@ -25,7 +25,6 @@ export default function Dashboard() {
       setSessions(Array.isArray(response.data) ? response.data : []);
       setError('');
     } catch (err) {
-      console.error(err);
       setError('Falha ao carregar sessões.');
     } finally {
       setLoading(false);
@@ -34,6 +33,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchSessions();
+
+    const onFocus = () => fetchSessions();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -51,7 +57,6 @@ export default function Dashboard() {
       alert('Todas as sessões foram derrubadas com sucesso!');
       handleLogout();
     } catch (err) {
-      console.error(err);
       alert('Erro ao tentar revogar sessões.');
       setRevoking(false);
     }
@@ -115,6 +120,14 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <button 
+          onClick={() => navigate('/audit-logs')}
+          className="w-full mb-8 flex items-center justify-center gap-2 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors text-slate-300 font-bold border border-slate-700"
+        >
+          <Activity size={20} />
+          VER HISTORICO DE SEGURANCA
+        </button>
+
         <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-8 mb-10 text-center">
           <div className="inline-flex p-4 bg-red-500/10 rounded-full mb-4">
             <AlertTriangle className="w-10 h-10 text-red-500" />
@@ -129,7 +142,7 @@ export default function Dashboard() {
             disabled={revoking}
             className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold transition-all shadow-lg shadow-red-900/20 disabled:opacity-50"
           >
-            {revoking ? 'DERRUBANDO...' : 'REVOGAR ACESSO GLOBAL (KILL SWITCH)'}
+            {revoking ? 'DERRUBANDO...' : 'REVOGAR ACESSO GLOBAL'}
           </button>
         </div>
 
@@ -143,7 +156,7 @@ export default function Dashboard() {
 
           <div className="divide-y divide-slate-800">
             {sessions.length === 0 ? (
-              <div className="p-8 text-center text-slate-500">Nenhuma sessão encontrada.</div>
+              <div className="p-8 text-center text-slate-500">Carregando ou nenhuma sessão...</div>
             ) : (
               sessions.map((session) => {
                 const deviceInfo = session.device_info || '';
@@ -151,15 +164,21 @@ export default function Dashboard() {
                 const date = new Date(session.created_at).toLocaleString();
 
                 return (
-                  <div key={session.id} className="p-4 flex items-center justify-between hover:bg-slate-800/50 transition-colors">
+                  <div key={session.id} className={`p-4 flex items-center justify-between hover:bg-slate-800/50 transition-colors ${session.is_current ? 'bg-slate-800/30' : ''}`}>
                     <div className="flex items-center gap-4">
                       <div className={`p-3 rounded-lg ${isMobile ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'}`}>
                         {isMobile ? <Smartphone size={24} /> : <Monitor size={24} />}
                       </div>
                       <div>
-                        <p className="font-medium text-white">
-                          {deviceInfo || 'Dispositivo Desconhecido'}
-                        </p>
+                        <div className="flex items-center gap-2">
+                            <p className="font-medium text-white">
+                            {deviceInfo || 'Dispositivo Desconhecido'}
+                            </p>
+                            {session.is_current && (
+                                <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded font-bold">VOCÊ</span>
+                            )}
+                        </div>
+                        
                         <div className="flex gap-3 text-xs text-slate-400 mt-1">
                           <span>IP: {session.ip_address}</span>
                           <span>•</span>

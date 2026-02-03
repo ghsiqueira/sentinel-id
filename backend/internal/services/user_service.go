@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"sentinel-id/internal/models"
 	"sentinel-id/internal/repositories"
 	"sentinel-id/internal/utils"
@@ -175,4 +176,32 @@ func (s *UserService) ListSessions(userID string) ([]models.Session, error) {
 		return nil, err
 	}
 	return s.SessionRepo.ListByUser(uid)
+}
+
+func (s *UserService) ListAuditLogs(userID uuid.UUID) ([]models.AuditLog, error) {
+	return s.AuditRepo.ListByUser(userID.String())
+}
+
+func (s *UserService) RevokeSession(sessionID string, userID uuid.UUID, ip, userAgent string) error {
+	sid, err := uuid.Parse(sessionID)
+	if err != nil {
+		return err
+	}
+
+	err = s.SessionRepo.RevokeByID(sid, userID)
+	if err != nil {
+		return err
+	}
+
+	s.AuditRepo.Create(models.AuditLog{
+		ID:        uuid.New(),
+		UserID:    userID,
+		Action:    "SESSION_REVOKED",
+		IPAddress: ip,
+		UserAgent: userAgent,
+		Details:   fmt.Sprintf(`{"revoked_session_id": "%s"}`, sessionID),
+		CreatedAt: time.Now(),
+	})
+
+	return nil
 }

@@ -29,6 +29,12 @@ func (r *SessionRepository) Revoke(refreshToken string) error {
 	return err
 }
 
+func (r *SessionRepository) RevokeByID(sessionID uuid.UUID, userID uuid.UUID) error {
+	query := `DELETE FROM sessions WHERE id = $1 AND user_id = $2`
+	_, err := r.DB.Exec(context.Background(), query, sessionID, userID)
+	return err
+}
+
 func (r *SessionRepository) RevokeAll(userID uuid.UUID) error {
 	query := `DELETE FROM sessions WHERE user_id = $1`
 	_, err := r.DB.Exec(context.Background(), query, userID)

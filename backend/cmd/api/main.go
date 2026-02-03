@@ -73,6 +73,8 @@ func main() {
 			})
 			users.POST("/revoke-all", authController.LogoutAll)
 			users.GET("/sessions", authController.ListSessions)
+			users.DELETE("/sessions/:id", authController.RevokeSession)
+			users.GET("/audit-logs", authController.GetAuditLogs)
 		}
 	}
 

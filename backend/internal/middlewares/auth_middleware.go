@@ -58,13 +58,19 @@ func AuthMiddleware(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 
-		var activeSessions int
-		err = db.QueryRow(context.Background(), "SELECT COUNT(*) FROM sessions WHERE user_id = $1", userUUID).Scan(&activeSessions)
+		var exists bool
+		err = db.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM sessions WHERE token = $1)", tokenString).Scan(&exists)
 
-		if err != nil || activeSessions == 0 {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session revoked or expired"})
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Session validation failed"})
 			return
 		}
+
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session revoked"})
+			return
+		}
+
 		c.Set("userID", userUUID)
 		c.Next()
 	}
