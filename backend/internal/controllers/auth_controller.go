@@ -153,7 +153,10 @@ func (c *AuthController) Logout(ctx *gin.Context) {
 func (c *AuthController) LogoutAll(ctx *gin.Context) {
 	userID := ctx.MustGet("userID").(uuid.UUID)
 
-	err := c.Service.RevokeAllSessions(userID)
+	clientIP := ctx.ClientIP()
+	userAgent := ctx.GetHeader("User-Agent")
+
+	err := c.Service.RevokeAllSessions(userID, clientIP, userAgent)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to revoke sessions"})
 		return

@@ -1,47 +1,52 @@
 package main
 
 import (
+	"context"
 	"log"
-	"net/http"
 	"os"
-	_ "sentinel-id/docs"
 	"sentinel-id/internal/controllers"
-	"sentinel-id/internal/database"
 	"sentinel-id/internal/middlewares"
 	"sentinel-id/internal/repositories"
 	"sentinel-id/internal/services"
 
 	"github.com/gin-contrib/cors"
-
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "sentinel-id/docs"
 )
 
-// @title           Sentinel ID API
-// @version         1.0
-// @description     Sistema de Identidade Centralizado (SSO).
-// @host            localhost:8080
-// @BasePath        /api
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("Aviso: Arquivo .env não encontrado, usando variáveis de ambiente do sistema.")
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using system environment variables")
 	}
 
-	database.ConnectDB()
-	defer database.CloseDB()
+	dbUrl := os.Getenv("DATABASE_URL")
+	if dbUrl == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
 
-	userRepo := repositories.NewUserRepository(database.DB)
-	sessionRepo := repositories.NewSessionRepository(database.DB)
-	userService := services.NewUserService(userRepo, sessionRepo)
+	dbPool, err := pgxpool.New(context.Background(), dbUrl)
+	if err != nil {
+		log.Fatal("Unable to connect to database: ", err)
+	}
+	defer dbPool.Close()
+
+	userRepo := repositories.NewUserRepository(dbPool)
+	sessionRepo := repositories.NewSessionRepository(dbPool)
+	auditRepo := repositories.NewAuditRepository(dbPool)
+
+	userService := services.NewUserService(userRepo, sessionRepo, auditRepo)
+
 	authController := controllers.NewAuthController(userService)
 
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -60,19 +65,14 @@ func main() {
 			auth.POST("/logout", authController.Logout)
 		}
 
-		protected := api.Group("/users")
-		protected.Use(middlewares.AuthMiddleware(database.DB))
+		users := api.Group("/users")
+		users.Use(middlewares.AuthMiddleware(dbPool))
 		{
-			protected.GET("/me", func(c *gin.Context) {
-				userID, _ := c.Get("userID")
-				c.JSON(http.StatusOK, gin.H{
-					"message": "Você entrou na área VIP!",
-					"your_id": userID,
-				})
+			users.GET("/me", func(c *gin.Context) {
+				c.JSON(200, gin.H{"message": "You are authenticated", "user_id": c.MustGet("userID")})
 			})
-
-			protected.POST("/revoke-all", authController.LogoutAll)
-			protected.GET("/sessions", authController.ListSessions)
+			users.POST("/revoke-all", authController.LogoutAll)
+			users.GET("/sessions", authController.ListSessions)
 		}
 	}
 
@@ -80,7 +80,5 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-
-	log.Println("Server running on port " + port)
 	r.Run(":" + port)
 }

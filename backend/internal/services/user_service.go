@@ -13,12 +13,14 @@ import (
 type UserService struct {
 	UserRepo    *repositories.UserRepository
 	SessionRepo *repositories.SessionRepository
+	AuditRepo   *repositories.AuditRepository
 }
 
-func NewUserService(userRepo *repositories.UserRepository, sessionRepo *repositories.SessionRepository) *UserService {
+func NewUserService(userRepo *repositories.UserRepository, sessionRepo *repositories.SessionRepository, auditRepo *repositories.AuditRepository) *UserService {
 	return &UserService{
 		UserRepo:    userRepo,
 		SessionRepo: sessionRepo,
+		AuditRepo:   auditRepo,
 	}
 }
 
@@ -59,6 +61,15 @@ func (s *UserService) Login(input models.UserLoginDTO, userAgent string, clientI
 
 	match, err := utils.VerifyPassword(input.Password, user.PasswordHash)
 	if err != nil || !match {
+		s.AuditRepo.Create(models.AuditLog{
+			ID:        uuid.New(),
+			UserID:    user.ID,
+			Action:    "LOGIN_FAILED",
+			IPAddress: clientIP,
+			UserAgent: userAgent,
+			Details:   `{"reason": "invalid_password"}`,
+			CreatedAt: time.Now(),
+		})
 		return "", "", errors.New("invalid credentials")
 	}
 
@@ -88,15 +99,22 @@ func (s *UserService) Login(input models.UserLoginDTO, userAgent string, clientI
 		return "", "", err
 	}
 
+	s.AuditRepo.Create(models.AuditLog{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		Action:    "LOGIN_SUCCESS",
+		IPAddress: clientIP,
+		UserAgent: userAgent,
+		Details:   "{}",
+		CreatedAt: time.Now(),
+	})
+
 	return accessToken, refreshToken, nil
 }
 
 func (s *UserService) RefreshToken(refreshToken string) (string, error) {
 	session, err := s.SessionRepo.FindByRefreshToken(refreshToken)
-	if err != nil {
-		return "", errors.New("database error")
-	}
-	if session == nil {
+	if err != nil || session == nil {
 		return "", errors.New("invalid refresh token")
 	}
 
@@ -120,8 +138,23 @@ func (s *UserService) Logout(refreshToken string) error {
 	return s.SessionRepo.Revoke(refreshToken)
 }
 
-func (s *UserService) RevokeAllSessions(userID uuid.UUID) error {
-	return s.SessionRepo.RevokeAll(userID)
+func (s *UserService) RevokeAllSessions(userID uuid.UUID, ip string, userAgent string) error {
+	err := s.SessionRepo.RevokeAll(userID)
+	if err != nil {
+		return err
+	}
+
+	s.AuditRepo.Create(models.AuditLog{
+		ID:        uuid.New(),
+		UserID:    userID,
+		Action:    "KILL_SWITCH_ACTIVATED",
+		IPAddress: ip,
+		UserAgent: userAgent,
+		Details:   `{"reason": "user_requested"}`,
+		CreatedAt: time.Now(),
+	})
+
+	return nil
 }
 
 func (s *UserService) ListUserSessions(userID uuid.UUID) ([]models.Session, error) {
@@ -133,7 +166,7 @@ func (s *UserService) LogoutAll(userID string) error {
 	if err != nil {
 		return err
 	}
-	return s.SessionRepo.RevokeAll(uid)
+	return s.RevokeAllSessions(uid, "Unknown", "Unknown")
 }
 
 func (s *UserService) ListSessions(userID string) ([]models.Session, error) {

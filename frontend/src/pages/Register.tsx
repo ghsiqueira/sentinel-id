@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { UserPlus, Mail, Lock, User, FileText, Check, X, CheckCircle } from 'lucide-react';
-import axios from 'axios';
+import api from '../services/api'; 
 
-export function Register() {
+export default function Register() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     full_name: '',
@@ -54,7 +54,7 @@ export function Register() {
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:8080/api/auth/register', formData);
+      await api.post('/auth/register', formData);
       alert("Conta criada com sucesso! Faça login.");
       navigate('/login');
     } catch (err: any) {
