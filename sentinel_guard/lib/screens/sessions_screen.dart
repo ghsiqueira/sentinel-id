@@ -147,95 +147,104 @@ class _SessionsScreenState extends State<SessionsScreen> {
             )
           : _sessions.isEmpty
           ? const Center(child: Text("Nenhuma sessão ativa encontrada."))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _sessions.length,
-              itemBuilder: (context, index) {
-                final session = _sessions[index];
-                final deviceInfo = session.deviceInfo.isNotEmpty
-                    ? session.deviceInfo
-                    : "Dispositivo Desconhecido";
-                final isMobile =
-                    deviceInfo.toLowerCase().contains('mobile') ||
-                    deviceInfo.toLowerCase().contains('android');
+          : RefreshIndicator(
+              onRefresh: _fetchSessions,
+              color: Colors.blueAccent,
+              backgroundColor: const Color(0xFF0F172A),
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: _sessions.length,
+                itemBuilder: (context, index) {
+                  final session = _sessions[index];
+                  final deviceInfo = session.deviceInfo.isNotEmpty
+                      ? session.deviceInfo
+                      : "Dispositivo Desconhecido";
+                  final isMobile =
+                      deviceInfo.toLowerCase().contains('mobile') ||
+                      deviceInfo.toLowerCase().contains('android');
 
-                return Card(
-                  color: session.isCurrent
-                      ? const Color(0xFF1E293B)
-                      : const Color(0xFF0F172A),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: session.isCurrent
-                          ? Colors.green.withValues(alpha: 0.5)
-                          : Colors.blue.withValues(alpha: 0.1),
-                    ),
-                  ),
-                  child: ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        isMobile ? Icons.smartphone : Icons.computer,
+                  return Card(
+                    color: session.isCurrent
+                        ? const Color(0xFF1E293B)
+                        : const Color(0xFF0F172A),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
                         color: session.isCurrent
-                            ? Colors.greenAccent
-                            : Colors.blueAccent,
+                            ? Colors.green.withValues(alpha: 0.5)
+                            : Colors.blue.withValues(alpha: 0.1),
                       ),
                     ),
-                    title: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            deviceInfo,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        if (session.isCurrent)
-                          Container(
-                            margin: const EdgeInsets.only(left: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              "VOCÊ",
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.greenAccent,
+                        child: Icon(
+                          isMobile ? Icons.smartphone : Icons.computer,
+                          color: session.isCurrent
+                              ? Colors.greenAccent
+                              : Colors.blueAccent,
+                        ),
+                      ),
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              deviceInfo,
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
                               ),
                             ),
                           ),
-                      ],
-                    ),
-                    subtitle: Text(
-                      'IP: ${session.ipAddress}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    trailing: IconButton(
-                      icon: Icon(
-                        Icons.delete_outline,
-                        color: session.isCurrent
-                            ? Colors.orangeAccent
-                            : Colors.redAccent,
+                          if (session.isCurrent)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                "VOCÊ",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.greenAccent,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                      onPressed: () => _revokeSession(session),
+                      subtitle: Text(
+                        'IP: ${session.ipAddress}',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: session.isCurrent
+                              ? Colors.orangeAccent
+                              : Colors.redAccent,
+                        ),
+                        onPressed: () => _revokeSession(session),
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
     );
   }

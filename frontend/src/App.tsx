@@ -3,12 +3,14 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Register from './pages/Register'; 
 import AuditLogs from './pages/AuditLogs';
+import LoginQR from './pages/LoginQR';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/qr-login" element={<LoginQR />} />
         <Route path="/register" element={<Register />} /> 
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/audit-logs" element={<AuditLogs />} />

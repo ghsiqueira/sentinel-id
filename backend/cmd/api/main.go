@@ -38,8 +38,9 @@ func main() {
 	userRepo := repositories.NewUserRepository(dbPool)
 	sessionRepo := repositories.NewSessionRepository(dbPool)
 	auditRepo := repositories.NewAuditRepository(dbPool)
+	qrRepo := repositories.NewQRRepository(dbPool)
 
-	userService := services.NewUserService(userRepo, sessionRepo, auditRepo)
+	userService := services.NewUserService(userRepo, sessionRepo, auditRepo, qrRepo)
 
 	authController := controllers.NewAuthController(userService)
 
@@ -63,6 +64,9 @@ func main() {
 			auth.POST("/login", authController.Login)
 			auth.POST("/refresh", authController.Refresh)
 			auth.POST("/logout", authController.Logout)
+
+			auth.POST("/qr/init", authController.InitQR)
+			auth.GET("/qr/poll/:code", authController.PollQR)
 		}
 
 		users := api.Group("/users")
@@ -75,6 +79,8 @@ func main() {
 			users.GET("/sessions", authController.ListSessions)
 			users.DELETE("/sessions/:id", authController.RevokeSession)
 			users.GET("/audit-logs", authController.GetAuditLogs)
+
+			users.POST("/qr/approve", authController.ApproveQR)
 		}
 	}
 

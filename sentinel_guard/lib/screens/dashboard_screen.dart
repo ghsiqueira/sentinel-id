@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:local_auth/local_auth.dart';
 import '../services/api_service.dart';
+import 'qr_scanner_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -14,6 +16,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _api = ApiService().dio;
   final _storage = const FlutterSecureStorage();
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   bool _isLoading = false;
   Timer? _statusTimer;
@@ -35,7 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       try {
         await _api.get('/users/me');
       } catch (e) {
-        // Ignora erros de conexão no background check
+        debugPrint('Background check ignorado: $e');
       }
     });
   }
@@ -107,6 +110,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _scanAndApproveLogin() async {
+    final String? scannedRequestId = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    if (scannedRequestId == null || !mounted) return;
+
+    try {
+      final bool canAuthenticateWithBiometrics =
+          await _localAuth.canCheckBiometrics;
+      final bool canAuthenticate =
+          canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
+
+      if (canAuthenticate) {
+        final bool didAuthenticate = await _localAuth.authenticate(
+          localizedReason: 'Confirme a sua identidade para aprovar o login Web',
+        );
+
+        if (!didAuthenticate) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Autenticação cancelada.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Biometria não disponível neste dispositivo.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro no leitor biométrico.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      await ApiService().approveQrLogin(scannedRequestId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login autorizado com sucesso!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Código QR expirado ou inválido.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -128,6 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
               padding: const EdgeInsets.all(20),
@@ -192,17 +278,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            Text(
-              "KILL SWITCH",
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.red,
+            Center(
+              child: Text(
+                "KILL SWITCH",
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
               ),
             ),
-            const Text(
-              "Pressione para revogar acesso global",
-              style: TextStyle(color: Colors.grey),
+            const Center(
+              child: Text(
+                "Pressione para revogar acesso global",
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
             const Spacer(),
 
@@ -215,10 +305,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.purpleAccent,
                 side: const BorderSide(color: Colors.purpleAccent),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
 
@@ -233,13 +320,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.blue,
                 side: const BorderSide(color: Colors.blue),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // NOVO BOTÃO DE APROVAR LOGIN - Fixo na tela, não flutua mais!
+            ElevatedButton.icon(
+              onPressed: _isLoading ? null : _scanAndApproveLogin,
+              icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+              label: const Text(
+                'APROVAR LOGIN WEB',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade600,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
         ),
       ),

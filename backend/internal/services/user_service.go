@@ -15,13 +15,20 @@ type UserService struct {
 	UserRepo    *repositories.UserRepository
 	SessionRepo *repositories.SessionRepository
 	AuditRepo   *repositories.AuditRepository
+	QRRepo      *repositories.QRRepository
 }
 
-func NewUserService(userRepo *repositories.UserRepository, sessionRepo *repositories.SessionRepository, auditRepo *repositories.AuditRepository) *UserService {
+func NewUserService(
+	userRepo *repositories.UserRepository,
+	sessionRepo *repositories.SessionRepository,
+	auditRepo *repositories.AuditRepository,
+	qrRepo *repositories.QRRepository,
+) *UserService {
 	return &UserService{
 		UserRepo:    userRepo,
 		SessionRepo: sessionRepo,
 		AuditRepo:   auditRepo,
+		QRRepo:      qrRepo,
 	}
 }
 
@@ -204,4 +211,99 @@ func (s *UserService) RevokeSession(sessionID string, userID uuid.UUID, ip, user
 	})
 
 	return nil
+}
+
+func (s *UserService) InitQRLogin() (*models.LoginRequest, error) {
+	req := models.LoginRequest{
+		ID:        uuid.New(),
+		Status:    "PENDING",
+		ExpiresAt: time.Now().Add(2 * time.Minute),
+		CreatedAt: time.Now(),
+	}
+
+	err := s.QRRepo.Create(req)
+	if err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+func (s *UserService) ApproveQRLogin(requestID string, userID uuid.UUID) error {
+	reqUUID, err := uuid.Parse(requestID)
+	if err != nil {
+		return errors.New("invalid request ID")
+	}
+
+	req, err := s.QRRepo.FindByID(reqUUID)
+	if err != nil || req == nil {
+		return errors.New("login request not found")
+	}
+	if time.Now().After(req.ExpiresAt) {
+		return errors.New("qr code expired")
+	}
+	if req.Status != "PENDING" {
+		return errors.New("qr code already used or invalid")
+	}
+
+	return s.QRRepo.Approve(reqUUID, userID)
+}
+
+func (s *UserService) PollQRLogin(requestID string, userAgent, ip string) (string, string, error) {
+	reqUUID, err := uuid.Parse(requestID)
+	if err != nil {
+		return "", "", errors.New("invalid request ID")
+	}
+
+	req, err := s.QRRepo.FindByID(reqUUID)
+	if err != nil {
+		return "", "", errors.New("request not found")
+	}
+
+	if req.Status == "PENDING" {
+		return "", "", nil
+	}
+
+	if req.Status == "USED" || time.Now().After(req.ExpiresAt) {
+		return "", "", errors.New("expired or used")
+	}
+
+	if req.Status == "APPROVED" && req.UserID != nil {
+		s.QRRepo.MarkAsUsed(reqUUID)
+
+		accessToken, err := utils.GenerateToken(*req.UserID)
+		if err != nil {
+			return "", "", err
+		}
+
+		refreshToken, err := utils.GenerateRefreshToken(*req.UserID)
+		if err != nil {
+			return "", "", err
+		}
+
+		session := models.Session{
+			ID:           uuid.New(),
+			UserID:       *req.UserID,
+			Token:        accessToken,
+			RefreshToken: refreshToken,
+			DeviceInfo:   userAgent + " (via QR)",
+			IPAddress:    ip,
+			ExpiresAt:    time.Now().Add(24 * time.Hour * 7),
+			CreatedAt:    time.Now(),
+		}
+		s.SessionRepo.Create(session)
+
+		s.AuditRepo.Create(models.AuditLog{
+			ID:        uuid.New(),
+			UserID:    *req.UserID,
+			Action:    "LOGIN_QR_SUCCESS",
+			IPAddress: ip,
+			UserAgent: userAgent,
+			Details:   "{}",
+			CreatedAt: time.Now(),
+		})
+
+		return accessToken, refreshToken, nil
+	}
+
+	return "", "", errors.New("unknown state")
 }

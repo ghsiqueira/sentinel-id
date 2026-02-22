@@ -19,7 +19,7 @@ class ApiService {
     dio = Dio();
 
     if (Platform.isAndroid) {
-      dio.options.baseUrl = 'http://10.0.2.2:8080/api';
+      dio.options.baseUrl = 'http://192.168.0.102:8080/api';
     } else {
       dio.options.baseUrl = 'http://localhost:8080/api';
     }
@@ -96,6 +96,14 @@ class ApiService {
     try {
       final response = await dio.get('/users/audit-logs');
       return response.data;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> approveQrLogin(String requestId) async {
+    try {
+      await dio.post('/users/qr/approve', data: {'request_id': requestId});
     } catch (e) {
       rethrow;
     }

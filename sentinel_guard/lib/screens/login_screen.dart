@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dashboard_screen.dart';
+import '../services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,23 +18,14 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   final _storage = const FlutterSecureStorage();
-  final _dio = Dio();
 
   Future<void> _handleLogin() async {
     setState(() => _isLoading = true);
 
     try {
-      String baseUrl;
-      if (Platform.isAndroid) {
-        baseUrl = 'http://10.0.2.2:8080';
-      } else {
-        baseUrl = 'http://localhost:8080';
-      }
-
-      final apiUrl = '$baseUrl/api/auth/login';
-
-      final response = await _dio.post(
-        apiUrl,
+      // Usa o Dio que já está configurado no ApiService com o IP correto!
+      final response = await ApiService().dio.post(
+        '/auth/login',
         data: {
           "email": _emailController.text,
           "password": _passwordController.text,
