@@ -77,7 +77,7 @@ func (r *UserRepository) GetByCPF(cpf string) (*models.User, error) {
 func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 	var user models.User
 
-	query := `SELECT id, full_name, email, cpf, password_hash FROM users WHERE email = $1`
+	query := `SELECT id, full_name, email, cpf, password_hash, trusted_device_id FROM users WHERE email = $1`
 
 	err := r.DB.QueryRow(context.Background(), query, email).Scan(
 		&user.ID,
@@ -85,6 +85,7 @@ func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 		&user.Email,
 		&user.CPF,
 		&user.PasswordHash,
+		&user.TrustedDeviceID,
 	)
 
 	if err != nil {
@@ -92,4 +93,10 @@ func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 	}
 
 	return &user, nil
+}
+
+func (r *UserRepository) SetTrustedDevice(userID string, deviceID string) error {
+	query := `UPDATE users SET trusted_device_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err := r.DB.Exec(context.Background(), query, deviceID, userID)
+	return err
 }

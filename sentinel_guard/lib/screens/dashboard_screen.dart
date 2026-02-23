@@ -20,6 +20,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   bool _isLoading = false;
   Timer? _statusTimer;
+  bool _isCheckingPrompt = false;
+
+  final Set<String> _handledRequests = {};
 
   @override
   void initState() {
@@ -34,13 +37,173 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _startStatusCheck() {
-    _statusTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         await _api.get('/users/me');
+        await _checkForPendingPrompts();
       } catch (e) {
         debugPrint('Background check ignorado: $e');
       }
     });
+  }
+
+  Future<void> _checkForPendingPrompts() async {
+    if (_isCheckingPrompt) return;
+
+    try {
+      final response = await _api.get('/users/prompt/pending');
+
+      if (response.statusCode == 200 && response.data['request_id'] != null) {
+        final String reqId = response.data['request_id'];
+
+        if (!_handledRequests.contains(reqId)) {
+          _isCheckingPrompt = true;
+          await _showLoginConfirmationDialog(reqId);
+        }
+      }
+    } catch (e) {
+    } finally {
+      _isCheckingPrompt = false;
+    }
+  }
+
+  Future<void> _showLoginConfirmationDialog(String reqId) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+        ),
+        title: Row(
+          children: const [
+            Icon(Icons.security, color: Colors.blue),
+            SizedBox(width: 10),
+            Text(
+              'Login Detectado',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Alguém está a tentar aceder à sua conta via Web.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    '📍 Dispositivo: Navegador Web',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '🌐 Local: São Paulo, BR (Estimado)',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'É você a tentar entrar?',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Não, Bloquear',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.fingerprint, color: Colors.white, size: 18),
+            label: const Text(
+              'Sim, Sou Eu',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade600,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    _handledRequests.add(reqId);
+
+    if (confirm == true) {
+      await _showAutomaticBiometricPrompt(reqId);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Acesso bloqueado com sucesso! 🚫'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAutomaticBiometricPrompt(String reqId) async {
+    try {
+      final bool canAuthenticate =
+          await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
+
+      if (canAuthenticate) {
+        final bool didAuthenticate = await _localAuth.authenticate(
+          localizedReason: 'Confirme a sua identidade para liberar o acesso.',
+        );
+
+        if (didAuthenticate) {
+          await ApiService().approveQrLogin(reqId);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Acesso Web Autorizado! 🌐✅'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro no leitor biométrico automático: $e');
+    }
   }
 
   Future<void> _logout() async {
@@ -61,7 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           style: TextStyle(color: Colors.red),
         ),
         content: const Text(
-          'Isso vai desconectar você e TODOS os outros dispositivos imediatamente. Tem certeza?',
+          'Isto vai desconectar você e TODOS os outros dispositivos imediatamente. Tem certeza?',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -86,7 +249,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     try {
       await _api.post('/users/revoke-all');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -119,55 +281,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (scannedRequestId == null || !mounted) return;
 
     try {
-      final bool canAuthenticateWithBiometrics =
-          await _localAuth.canCheckBiometrics;
       final bool canAuthenticate =
-          canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
+          await _localAuth.canCheckBiometrics ||
+          await _localAuth.isDeviceSupported();
 
       if (canAuthenticate) {
         final bool didAuthenticate = await _localAuth.authenticate(
-          localizedReason: 'Confirme a sua identidade para aprovar o login Web',
+          localizedReason:
+              'Confirme a sua identidade para aprovar o login Web via QR',
         );
 
         if (!didAuthenticate) {
-          if (mounted) {
+          if (mounted)
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Autenticação cancelada.'),
                 backgroundColor: Colors.orange,
               ),
             );
-          }
           return;
         }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Biometria não disponível neste dispositivo.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Erro no leitor biométrico.'),
             backgroundColor: Colors.red,
           ),
         );
-      }
       return;
     }
 
     setState(() => _isLoading = true);
     try {
       await ApiService().approveQrLogin(scannedRequestId);
-
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Login autorizado com sucesso!'),
@@ -175,20 +324,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             duration: Duration(seconds: 4),
           ),
         );
-      }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Código QR expirado ou inválido.'),
             backgroundColor: Colors.red,
           ),
         );
-      }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -295,11 +440,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const Spacer(),
-
             OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pushNamed(context, '/audit-logs');
-              },
+              onPressed: () => Navigator.pushNamed(context, '/audit-logs'),
               icon: const Icon(Icons.history, color: Colors.purpleAccent),
               label: const Text('Ver Histórico de Ações'),
               style: OutlinedButton.styleFrom(
@@ -308,13 +450,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-
             const SizedBox(height: 12),
-
             OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pushNamed(context, '/sessions');
-              },
+              onPressed: () => Navigator.pushNamed(context, '/sessions'),
               icon: const Icon(Icons.devices, color: Colors.blue),
               label: const Text('Ver Dispositivos Conectados'),
               style: OutlinedButton.styleFrom(
@@ -323,25 +461,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-
             const SizedBox(height: 24),
-
-            // NOVO BOTÃO DE APROVAR LOGIN - Fixo na tela, não flutua mais!
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _scanAndApproveLogin,
               icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
               label: const Text(
-                'APROVAR LOGIN WEB',
+                'APROVAR LOGIN WEB (QR)',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  letterSpacing: 1.5,
+                  fontSize: 14,
+                  letterSpacing: 1.0,
                 ),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue.shade600,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

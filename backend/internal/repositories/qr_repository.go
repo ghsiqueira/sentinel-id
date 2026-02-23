@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"sentinel-id/internal/models"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,4 +50,17 @@ func (r *QRRepository) MarkAsUsed(id uuid.UUID) error {
 	query := `UPDATE login_requests SET status = 'USED' WHERE id = $1`
 	_, err := r.DB.Exec(context.Background(), query, id)
 	return err
+}
+
+func (r *QRRepository) CreatePromptRequest(reqID string, userID string, expiresAt time.Time) error {
+	query := `INSERT INTO login_requests (id, status, user_id, expires_at) VALUES ($1, 'PENDING', $2, $3)`
+	_, err := r.DB.Exec(context.Background(), query, reqID, userID, expiresAt)
+	return err
+}
+
+func (r *QRRepository) GetPendingPrompt(userID string) (string, error) {
+	var reqID string
+	query := `SELECT id FROM login_requests WHERE user_id = $1 AND status = 'PENDING' AND expires_at > NOW() LIMIT 1`
+	err := r.DB.QueryRow(context.Background(), query, userID).Scan(&reqID)
+	return reqID, err
 }

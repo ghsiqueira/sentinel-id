@@ -67,6 +67,8 @@ func main() {
 
 			auth.POST("/qr/init", authController.InitQR)
 			auth.GET("/qr/poll/:code", authController.PollQR)
+
+			auth.POST("/prompt/init", authController.InitPrompt)
 		}
 
 		users := api.Group("/users")
@@ -81,6 +83,10 @@ func main() {
 			users.GET("/audit-logs", authController.GetAuditLogs)
 
 			users.POST("/qr/approve", authController.ApproveQR)
+
+			users.POST("/trusted-device", authController.SetTrustedDevice)
+
+			users.GET("/prompt/pending", authController.CheckPendingPrompt)
 		}
 	}
 

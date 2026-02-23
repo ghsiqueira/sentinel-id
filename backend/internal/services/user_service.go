@@ -307,3 +307,37 @@ func (s *UserService) PollQRLogin(requestID string, userAgent, ip string) (strin
 
 	return "", "", errors.New("unknown state")
 }
+
+func (s *UserService) SetTrustedDevice(userID string, deviceID string) error {
+	return s.UserRepo.SetTrustedDevice(userID, deviceID)
+}
+
+func (s *UserService) InitPromptLogin(email string) (*models.LoginRequest, error) {
+	user, err := s.UserRepo.FindByEmail(email)
+	if err != nil || user == nil {
+		return nil, errors.New("utilizador não encontrado")
+	}
+
+	if user.TrustedDeviceID == nil || *user.TrustedDeviceID == "" {
+		return nil, errors.New("este utilizador não possui um dispositivo de confiança configurado")
+	}
+
+	reqID := uuid.New()
+	expiresAt := time.Now().Add(2 * time.Minute)
+
+	err = s.QRRepo.CreatePromptRequest(reqID.String(), user.ID.String(), expiresAt)
+	if err != nil {
+		return nil, err
+	}
+
+	req := models.LoginRequest{
+		ID:        reqID,
+		Status:    "PENDING",
+		ExpiresAt: expiresAt,
+	}
+	return &req, nil
+}
+
+func (s *UserService) CheckPendingPrompt(userID string) (string, error) {
+	return s.QRRepo.GetPendingPrompt(userID)
+}

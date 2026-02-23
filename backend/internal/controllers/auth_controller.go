@@ -31,6 +31,14 @@ type ApproveQRInput struct {
 	RequestID string `json:"request_id" binding:"required"`
 }
 
+type SetTrustedDeviceInput struct {
+	DeviceID string `json:"device_id" binding:"required"`
+}
+
+type InitPromptInput struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
 func NewAuthController(service *services.UserService) *AuthController {
 	return &AuthController{Service: service}
 }
@@ -258,4 +266,60 @@ func (c *AuthController) PollQR(ctx *gin.Context) {
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 	})
+}
+
+// @Summary      Definir o celular atual como "Dispositivo de Confiança"
+// @Router       /users/trusted-device [post]
+func (c *AuthController) SetTrustedDevice(ctx *gin.Context) {
+	var input SetTrustedDeviceInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := ctx.MustGet("userID").(uuid.UUID)
+
+	err := c.Service.SetTrustedDevice(userID.String(), input.DeviceID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set trusted device"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "Trusted device set successfully"})
+}
+
+// @Summary      Iniciar Login via Prompt (Apenas com Email)
+// @Router       /auth/prompt/init [post]
+func (c *AuthController) InitPrompt(ctx *gin.Context) {
+	var input InitPromptInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	req, err := c.Service.InitPromptLogin(input.Email)
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"request_id": req.ID,
+		"expires_at": req.ExpiresAt,
+		"message":    "Aguardando aprovação no dispositivo móvel",
+	})
+}
+
+// @Summary      Verificar pedidos no radar do telemóvel
+// @Router       /users/prompt/pending [get]
+func (c *AuthController) CheckPendingPrompt(ctx *gin.Context) {
+	userID := ctx.MustGet("userID").(uuid.UUID)
+
+	reqID, err := c.Service.CheckPendingPrompt(userID.String())
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"message": "Nenhum pedido pendente"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"request_id": reqID})
 }

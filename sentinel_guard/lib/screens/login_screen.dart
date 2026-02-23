@@ -23,7 +23,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Usa o Dio que já está configurado no ApiService com o IP correto!
       final response = await ApiService().dio.post(
         '/auth/login',
         data: {
@@ -33,8 +32,65 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       final accessToken = response.data['access_token'];
-
       await _storage.write(key: 'access_token', value: accessToken);
+
+      if (!mounted) return;
+
+      String? isTrusted = await _storage.read(key: 'is_trusted_device');
+
+      if (isTrusted == null) {
+        bool? confirm = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF0F172A),
+            title: const Text(
+              '🛡️ Chave de Segurança',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: const Text(
+              'Deseja registrar este celular como o seu dispositivo principal para aprovar logins automáticos da Web?',
+              style: TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text(
+                  'Agora não',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Sim, registrar',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        if (confirm == true) {
+          try {
+            await ApiService().setTrustedDevice("meu-telemovel-principal");
+            await _storage.write(key: 'is_trusted_device', value: 'true');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Celular registrado com sucesso! 📱✨'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } catch (e) {}
+        } else {
+          await _storage.write(key: 'is_trusted_device', value: 'false');
+        }
+      }
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -44,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on DioException catch (e) {
       String message = 'Erro de conexão';
-      if (e.response?.statusCode == 401) {
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 404) {
         message = 'Email ou senha incorretos';
       }
 
@@ -54,7 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

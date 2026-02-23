@@ -108,4 +108,12 @@ class ApiService {
       rethrow;
     }
   }
+
+  Future<void> setTrustedDevice(String deviceId) async {
+    try {
+      await dio.post('/users/trusted-device', data: {'device_id': deviceId});
+    } catch (e) {
+      rethrow;
+    }
+  }
 }
