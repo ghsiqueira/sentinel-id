@@ -55,19 +55,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (response.statusCode == 200 && response.data['request_id'] != null) {
         final String reqId = response.data['request_id'];
+        final String rawDevice = response.data['device_info'] ?? 'Desconhecido';
+        final String locationData = response.data['ip_address'] ?? 'Oculto';
 
         if (!_handledRequests.contains(reqId)) {
           _isCheckingPrompt = true;
-          await _showLoginConfirmationDialog(reqId);
+          await _showLoginConfirmationDialog(reqId, rawDevice, locationData);
         }
       }
     } catch (e) {
+      debugPrint('Nenhum pedido no radar.');
     } finally {
       _isCheckingPrompt = false;
     }
   }
 
-  Future<void> _showLoginConfirmationDialog(String reqId) async {
+  Future<void> _showLoginConfirmationDialog(
+    String reqId,
+    String rawDevice,
+    String locationData,
+  ) async {
+    String deviceFriendly = "Dispositivo Web Desconhecido";
+
+    if (rawDevice.contains('Windows')) {
+      deviceFriendly = "Windows (Navegador Web)";
+    } else if (rawDevice.contains('Macintosh')) {
+      deviceFriendly = "MacBook / iMac (Web)";
+    } else if (rawDevice.contains('Linux')) {
+      deviceFriendly = "Linux (Navegador Web)";
+    }
+
     final bool? confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -96,7 +113,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Alguém está a tentar aceder à sua conta via Web.',
+              'Alguém está a tentar aceder à sua conta.',
               style: TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 16),
@@ -110,15 +127,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
-                    '📍 Dispositivo: Navegador Web',
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                    '💻 Dispositivo: $deviceFriendly',
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    '🌐 Local: São Paulo, BR (Estimado)',
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                    '📍 Local: $locationData',
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -292,46 +312,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
 
         if (!didAuthenticate) {
-          if (mounted)
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Autenticação cancelada.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Autenticação cancelada.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
           return;
         }
       }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erro no leitor biométrico.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erro no leitor biométrico.'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
     try {
       await ApiService().approveQrLogin(scannedRequestId);
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login autorizado com sucesso!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
-        );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Login autorizado com sucesso!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
+        ),
+      );
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Código QR expirado ou inválido.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Código QR expirado ou inválido.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

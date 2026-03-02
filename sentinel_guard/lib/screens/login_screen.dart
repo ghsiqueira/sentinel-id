@@ -86,7 +86,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               );
             }
-          } catch (e) {}
+          } catch (e) {
+            //
+          }
         } else {
           await _storage.write(key: 'is_trusted_device', value: 'false');
         }

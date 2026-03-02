@@ -291,35 +291,43 @@ func (c *AuthController) SetTrustedDevice(ctx *gin.Context) {
 // @Summary      Iniciar Login via Prompt (Apenas com Email)
 // @Router       /auth/prompt/init [post]
 func (c *AuthController) InitPrompt(ctx *gin.Context) {
-	var input InitPromptInput
-	if err := ctx.ShouldBindJSON(&input); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Email inválido ou ausente"})
 		return
 	}
 
-	req, err := c.Service.InitPromptLogin(input.Email)
+	ipAddress := ctx.ClientIP()
+	userAgent := ctx.GetHeader("User-Agent")
+
+	reqData, err := c.Service.InitPromptLogin(req.Email, ipAddress, userAgent)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"request_id": req.ID,
-		"expires_at": req.ExpiresAt,
-		"message":    "Aguardando aprovação no dispositivo móvel",
+		"message":    "Pedido de login enviado",
+		"request_id": reqData.ID,
+		"expires_at": reqData.ExpiresAt,
 	})
 }
 
-// @Summary      Verificar pedidos no radar do telemóvel
-// @Router       /users/prompt/pending [get]
 func (c *AuthController) CheckPendingPrompt(ctx *gin.Context) {
 	userID := ctx.MustGet("userID").(uuid.UUID)
 
-	reqID, err := c.Service.CheckPendingPrompt(userID.String())
+	reqID, devInfo, ipAddress, err := c.Service.CheckPendingPrompt(userID.String())
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"message": "Nenhum pedido pendente"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"request_id": reqID})
+	ctx.JSON(http.StatusOK, gin.H{
+		"request_id":  reqID,
+		"device_info": devInfo,
+		"ip_address":  ipAddress,
+	})
 }

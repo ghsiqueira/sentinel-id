@@ -1,11 +1,14 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sentinel-id/internal/models"
 	"sentinel-id/internal/repositories"
 	"sentinel-id/internal/utils"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -312,7 +315,7 @@ func (s *UserService) SetTrustedDevice(userID string, deviceID string) error {
 	return s.UserRepo.SetTrustedDevice(userID, deviceID)
 }
 
-func (s *UserService) InitPromptLogin(email string) (*models.LoginRequest, error) {
+func (s *UserService) InitPromptLogin(email string, ipAddress string, userAgent string) (*models.LoginRequest, error) {
 	user, err := s.UserRepo.FindByEmail(email)
 	if err != nil || user == nil {
 		return nil, errors.New("utilizador não encontrado")
@@ -325,7 +328,10 @@ func (s *UserService) InitPromptLogin(email string) (*models.LoginRequest, error
 	reqID := uuid.New()
 	expiresAt := time.Now().Add(2 * time.Minute)
 
-	err = s.QRRepo.CreatePromptRequest(reqID.String(), user.ID.String(), expiresAt)
+	// CHAMA A NOSSA API REAL
+	locationInfo := getGeoLocation(ipAddress)
+
+	err = s.QRRepo.CreatePromptRequest(reqID.String(), user.ID.String(), userAgent, locationInfo, expiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -338,6 +344,30 @@ func (s *UserService) InitPromptLogin(email string) (*models.LoginRequest, error
 	return &req, nil
 }
 
-func (s *UserService) CheckPendingPrompt(userID string) (string, error) {
+func (s *UserService) CheckPendingPrompt(userID string) (string, string, string, error) {
 	return s.QRRepo.GetPendingPrompt(userID)
+}
+
+func getGeoLocation(ip string) string {
+	if ip == "127.0.0.1" || ip == "::1" || strings.HasPrefix(ip, "172.") || strings.HasPrefix(ip, "192.168.") {
+		return "Rede Local (" + ip + ")"
+	}
+
+	resp, err := http.Get("http://ip-api.com/json/" + ip)
+	if err != nil {
+		return "Localização Desconhecida (" + ip + ")"
+	}
+	defer resp.Body.Close()
+
+	var geo struct {
+		Status string `json:"status"`
+		City   string `json:"city"`
+		Region string `json:"region"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&geo); err == nil && geo.Status == "success" {
+		return geo.City + ", " + geo.Region + " (" + ip + ")"
+	}
+
+	return "Localização Indisponível (" + ip + ")"
 }

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../models/session.dart';
 import '../services/api_service.dart';
 
 class SessionsScreen extends StatefulWidget {
@@ -13,9 +11,8 @@ class SessionsScreen extends StatefulWidget {
 
 class _SessionsScreenState extends State<SessionsScreen> {
   final _api = ApiService().dio;
-  List<Session> _sessions = [];
   bool _isLoading = true;
-  String? _error;
+  List<dynamic> _sessions = [];
 
   @override
   void initState() {
@@ -27,47 +24,46 @@ class _SessionsScreenState extends State<SessionsScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await _api.get('/users/sessions');
-      if (response.data == null) {
+
+      if (mounted) {
         setState(() {
-          _sessions = [];
+          if (response.data is List) {
+            _sessions = response.data;
+          } else if (response.data is Map &&
+              response.data.containsKey('sessions')) {
+            _sessions = response.data['sessions'];
+          } else {
+            _sessions = [];
+          }
           _isLoading = false;
         });
-        return;
       }
-      final List<dynamic> data = response.data;
-      setState(() {
-        _sessions = data.map((json) => Session.fromJson(json)).toList();
-        _isLoading = false;
-      });
-    } on DioException catch (e) {
-      setState(() {
-        _error = 'Erro de conexão: ${e.message}';
-        _isLoading = false;
-      });
     } catch (e) {
-      setState(() {
-        _error = 'Erro interno.';
-        _isLoading = false;
-      });
+      debugPrint('Erro real ao buscar sessões: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao carregar sessões.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _revokeSession(Session session) async {
-    final isMe = session.isCurrent;
-
+  Future<void> _revokeSession(String sessionId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF0F172A),
-        title: Text(
-          isMe ? 'Desconectar ESTE dispositivo?' : 'Desconectar dispositivo?',
-          style: const TextStyle(color: Colors.white),
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text(
+          'Revogar Sessão',
+          style: TextStyle(color: Colors.white),
         ),
-        content: Text(
-          isMe
-              ? 'Você será deslogado imediatamente do aplicativo.'
-              : 'Este dispositivo perderá o acesso.',
-          style: const TextStyle(color: Colors.white70),
+        content: const Text(
+          'Tem a certeza que deseja desconectar este dispositivo?',
+          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
@@ -77,8 +73,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text(
-              'Desconectar',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              'Sim, Desconectar',
+              style: TextStyle(color: Colors.red),
             ),
           ),
         ],
@@ -88,159 +84,186 @@ class _SessionsScreenState extends State<SessionsScreen> {
     if (confirm != true) return;
 
     try {
-      setState(() {
-        _sessions.removeWhere((s) => s.id == session.id);
-      });
+      await _api.delete('/users/sessions/$sessionId');
 
-      await _api.delete('/users/sessions/${session.id}');
+      if (!mounted) return;
 
-      if (isMe) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Desconectado com sucesso.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          navigatorKey.currentState?.pushNamedAndRemoveUntil(
-            '/login',
-            (route) => false,
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sessão desconectada com sucesso!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sessão encerrada com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
       _fetchSessions();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erro ao desconectar.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erro ao encerrar sessão.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
+  }
+
+  String _getDeviceFriendlyName(String rawDevice) {
+    if (rawDevice.isEmpty) return "Dispositivo Desconhecido";
+    if (rawDevice.contains('Windows')) return "💻 Windows (Web)";
+    if (rawDevice.contains('Macintosh')) return "💻 MacBook / iMac (Web)";
+    if (rawDevice.contains('Linux')) return "💻 Linux (Web)";
+    if (rawDevice.contains('Android')) return "📱 Android";
+    if (rawDevice.contains('iPhone') || rawDevice.contains('iPad'))
+      return "📱 iOS";
+    if (rawDevice.contains('Dart')) return "📱 Sentinel Guard App";
+    return "💻 Dispositivo Web";
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Sessões Ativas',
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        title: Text(
+          'Dispositivos Conectados',
+          style: GoogleFonts.jetBrainsMono(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Colors.blue))
           : _sessions.isEmpty
-          ? const Center(child: Text("Nenhuma sessão ativa encontrada."))
+          ? const Center(
+              child: Text(
+                'Nenhuma sessão ativa.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
           : RefreshIndicator(
               onRefresh: _fetchSessions,
-              color: Colors.blueAccent,
-              backgroundColor: const Color(0xFF0F172A),
+              color: Colors.blue,
+              backgroundColor: const Color(0xFF1E293B),
               child: ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 itemCount: _sessions.length,
                 itemBuilder: (context, index) {
                   final session = _sessions[index];
-                  final deviceInfo = session.deviceInfo.isNotEmpty
-                      ? session.deviceInfo
-                      : "Dispositivo Desconhecido";
-                  final isMobile =
-                      deviceInfo.toLowerCase().contains('mobile') ||
-                      deviceInfo.toLowerCase().contains('android');
+                  final isCurrent = session['is_current'] == true;
 
-                  return Card(
-                    color: session.isCurrent
-                        ? const Color(0xFF1E293B)
-                        : const Color(0xFF0F172A),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
+                  final rawDevice =
+                      session['user_agent'] ?? session['device_info'] ?? '';
+                  final rawIp = session['ip_address'] ?? '';
+
+                  final deviceName = _getDeviceFriendlyName(rawDevice);
+                  // Puxamos direto do banco cru
+                  final location = rawIp.isNotEmpty
+                      ? rawIp
+                      : "Localização Desconhecida";
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(
-                        color: session.isCurrent
+                      border: Border.all(
+                        color: isCurrent
                             ? Colors.green.withValues(alpha: 0.5)
-                            : Colors.blue.withValues(alpha: 0.1),
+                            : Colors.blue.withValues(alpha: 0.2),
+                        width: isCurrent ? 2 : 1,
                       ),
                     ),
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black26,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          isMobile ? Icons.smartphone : Icons.computer,
-                          color: session.isCurrent
-                              ? Colors.greenAccent
-                              : Colors.blueAccent,
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              deviceInfo,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                fontSize: 14,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                deviceName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
-                          if (session.isCurrent)
-                            Container(
-                              margin: const EdgeInsets.only(left: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
+                            if (isCurrent)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Este Dispositivo',
+                                  style: TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            else
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () => _revokeSession(session['id']),
+                                constraints: const BoxConstraints(),
+                                padding: EdgeInsets.zero,
                               ),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                "VOCÊ",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.greenAccent,
-                                  fontWeight: FontWeight.bold,
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_outlined,
+                              color: Colors.grey,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                location,
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 13,
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                      subtitle: Text(
-                        'IP: ${session.ipAddress}',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
+                          ],
                         ),
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
-                          Icons.delete_outline,
-                          color: session.isCurrent
-                              ? Colors.orangeAccent
-                              : Colors.redAccent,
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.access_time,
+                              color: Colors.grey,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Criada em: ${DateTime.parse(session['created_at']).toLocal().toString().split('.')[0]}',
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
                         ),
-                        onPressed: () => _revokeSession(session),
-                      ),
+                      ],
                     ),
                   );
                 },

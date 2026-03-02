@@ -52,15 +52,15 @@ func (r *QRRepository) MarkAsUsed(id uuid.UUID) error {
 	return err
 }
 
-func (r *QRRepository) CreatePromptRequest(reqID string, userID string, expiresAt time.Time) error {
-	query := `INSERT INTO login_requests (id, status, user_id, expires_at) VALUES ($1, 'PENDING', $2, $3)`
-	_, err := r.DB.Exec(context.Background(), query, reqID, userID, expiresAt)
+func (r *QRRepository) CreatePromptRequest(reqID string, userID string, deviceInfo string, ip string, expiresAt time.Time) error {
+	query := `INSERT INTO login_requests (id, status, user_id, device_info, ip_address, expires_at) VALUES ($1, 'PENDING', $2, $3, $4, $5)`
+	_, err := r.DB.Exec(context.Background(), query, reqID, userID, deviceInfo, ip, expiresAt)
 	return err
 }
 
-func (r *QRRepository) GetPendingPrompt(userID string) (string, error) {
-	var reqID string
-	query := `SELECT id FROM login_requests WHERE user_id = $1 AND status = 'PENDING' AND expires_at > NOW() LIMIT 1`
-	err := r.DB.QueryRow(context.Background(), query, userID).Scan(&reqID)
-	return reqID, err
+func (r *QRRepository) GetPendingPrompt(userID string) (string, string, string, error) {
+	var reqID, devInfo, ipAddress string
+	query := `SELECT id, COALESCE(device_info, 'Desconhecido'), COALESCE(ip_address, 'IP Oculto') FROM login_requests WHERE user_id = $1 AND status = 'PENDING' AND expires_at > NOW() LIMIT 1`
+	err := r.DB.QueryRow(context.Background(), query, userID).Scan(&reqID, &devInfo, &ipAddress)
+	return reqID, devInfo, ipAddress, err
 }
